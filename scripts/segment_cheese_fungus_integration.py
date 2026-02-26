@@ -41,9 +41,23 @@ def load_reference(csv_path: str):
 
 
 def load_hsi(hsi_path: str):
-    """Load cube saved as .npy (shape: rows, cols, bands)."""
-    data = np.load(hsi_path).astype(np.float32)
-    wavelengths = np.arange(data.shape[2], dtype=np.float32)
+    """
+    Load hyperspectral cube.
+    Supports:
+    - ENVI files via .hdr/.dat (using spectral.io.envi)
+    - .npy stacks (shape: rows, cols, bands)
+    """
+    lower = hsi_path.lower()
+    if lower.endswith((".hdr", ".dat")):
+        import spectral.io.envi as envi
+
+        img = envi.open(hsi_path)
+        data = img.load().astype(np.float32)
+        # Wavelengths are not currently used downstream; provide a simple index array.
+        wavelengths = np.arange(data.shape[2], dtype=np.float32)
+    else:
+        data = np.load(hsi_path).astype(np.float32)
+        wavelengths = np.arange(data.shape[2], dtype=np.float32)
     return data, wavelengths
 
 
@@ -129,9 +143,9 @@ def export_results(mask: np.ndarray, output_dir: str, base_name: str,
         writer.writeheader()
         writer.writerow(summary)
 
-    print(f"\n✅ Mask saved          → {mask_path}")
-    print(f"✅ Overlay saved       → {overlay_path}")
-    print(f"✅ Summary CSV saved   → {summary_path}\n")
+    print(f"\nMask saved          -> {mask_path}")
+    print(f"Overlay saved       -> {overlay_path}")
+    print(f"Summary CSV saved   -> {summary_path}\n")
 
 
 # ----------------------------------------------------------------------
@@ -154,42 +168,57 @@ def main():
                         help="Minimum component size (pixels).")
     parser.add_argument("--margin", type=int, default=2,
                         help="Margin (pixels) for dilation.")
+    parser.add_argument("--roi_mask", default=None,
+                        help="Optional .npy boolean mask (rows x cols). Only pixels with True are kept in final mask.")
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
 
     # ------------------- Load reference ---------------------------------
     wavelengths, ref_spec = load_reference(args.csv_path)
-    print(f"🔍 Reference spectra loaded: {len(wavelengths)} bands")
+    print(f"Reference spectra loaded: {len(wavelengths)} bands")
 
     # ------------------- Load cube ---------------------------------------
     cube, band_centers = load_hsi(args.hsi_path)
     base_name = os.path.splitext(os.path.basename(args.hsi_path))[0]
-    print(f"🔍 Cube loaded: {cube.shape[0]}×{cube.shape[1]}×{cube.shape[2]}")
+    print(f"Cube loaded: {cube.shape[0]}x{cube.shape[1]}x{cube.shape[2]}")
 
     # ------------------- Minimum Noise Fraction ------------------------
-    print(f"⚙️  Computing {args.mnf_components} MNF components …")
-    # Center data for FactorAnalysis
-    flat = cube.reshape(-1, cube.shape[2]).T  # (bands, pixels)
-    fa = FactorAnalysis(n_components=args.mnf_components, random_state=0)
-    fa.fit(flat)
-    transformed = fa.transform(flat)            # (components, pixels)
-    mnf = transformed.T.reshape(cube.shape)     # (rows, cols, comps)
+    print(f"Computing {args.mnf_components} MNF components ...")
+    # Reshape to (pixels, bands) for FactorAnalysis
+    h, w, b = cube.shape
+    flat = cube.reshape(-1, b)  # (pixels, bands)
+    n_comp = min(args.mnf_components, b)
+    fa = FactorAnalysis(n_components=n_comp, random_state=0)
+    transformed = fa.fit_transform(flat)        # (pixels, n_comp)
+    mnf = transformed.reshape(h, w, n_comp)     # (rows, cols, comps)
 
     # ------------------- NMF unmixing (single component) ---------------
-    print("🧩  NMF unmixing …")
-    nmf = NMF(n_components=1, random_state=0, alpha=0.1)
-    W = nmf.fit_transform(mnf.reshape(-1, args.mnf_components).T)  # (1, pixels)
-    H = nmf.transform(mnf.reshape(-1, args.mnf_components))         # (pixels, 1)
-    abundance = H[:, 0].reshape(cube.shape[:2])
+    print("NMF unmixing ...")
+    # Use the MNF components as features (pixels x components)
+    pixels = h * w
+    comps = mnf.shape[2]
+    mnf_flat = mnf.reshape(pixels, comps)
+    nmf = NMF(n_components=1, init="nndsvda", random_state=0, max_iter=200)
+    H = nmf.fit_transform(np.maximum(mnf_flat, 0))  # (pixels, 1)
+    abundance = H[:, 0].reshape(h, w)
 
     # ------------------- Threshold ---------------------------------------
-    print(f"🔎  Thresholding (> {args.thresh}) …")
+    print(f"Thresholding (> {args.thresh}) ...")
     raw_mask = threshold_abundance(abundance, args.thresh)
 
     # ------------------- Clean mask --------------------------------------
-    print("🧹  Cleaning mask …")
+    print("Cleaning mask ...")
     clean_mask_result = clean_mask(raw_mask, args.min_mask_area, args.margin)
+
+    # ------------------- Apply ROI mask if provided ----------------------
+    if args.roi_mask is not None:
+        roi = np.load(args.roi_mask).astype(bool)
+        if roi.shape != clean_mask_result.shape:
+            raise ValueError(
+                f"ROI mask shape {roi.shape} does not match cube spatial shape {clean_mask_result.shape}"
+            )
+        clean_mask_result = (clean_mask_result.astype(bool) & roi).astype(np.uint8)
 
     # ------------------- Export -------------------------------------------
     export_results(clean_mask_result, args.output_dir, base_name,
