@@ -129,3 +129,4 @@ Resulting files (in `--output_dir`):
   - `--hsi_path` in the ROI tool and segmentation command point to the **same cube**.
   - You didn’t crop or resample the cube between the two steps.
 
+C:\Users\1\AppData\Local\Programs\Python\Python38\python.exe C:/Users/1/PycharmProjects/Workspace/scripts/segment_cheese_fungus_integration.py --hsi_path C:\Users\1\PycharmProjects\Workspace\cube_26_02_12_37_27\cube_26_02_12_37_27.hdr --output_dir C:\Users\1\PycharmProjects\Workspace\real_cube_26_02_12_37_27_output_integration_roi --thresh 0.12 --mnf_components 5 --min_mask_area 5 --margin 2 --roi_mask C:\Users\1\PycharmProjects\Workspace\cube_26_02_12_37_27\cube_26_02_12_37_27_roi_mask.npy
