@@ -25,6 +25,8 @@ These are already installed in `venv` from the earlier setup.
 
 ### 3. Running the ROI Tool
 
+#### 3.1 Generic example
+
 From the workspace root (`D:\PycharmProjects\Workspace`):
 
 ```bash
@@ -32,6 +34,18 @@ venv\Scripts\python scripts\select_fungus_rois.py ^
   --hsi_path "D:\PycharmProjects\cube_26_02_12_37_27\cube_26_02_12_37_27.hdr" ^
   --output_mask "D:\PycharmProjects\Workspace\roi_fungus_mask.npy"
 ```
+
+#### 3.2 Using an HSI from the `capture` folder
+
+If your ENVI cube lives in the workspace `capture` directory, run (still from the workspace root):
+
+```bash
+venv\Scripts\python scripts\select_fungus_rois.py ^
+  --hsi_path "D:\PycharmProjects\Workspace\capture\2025-10-31_09-03-44_white_circ.hdr" ^
+  --output_mask "D:\PycharmProjects\Workspace\capture\2025-10-31_09-03-44_white_circ_roi_mask.npy"
+```
+
+You can swap in any other `.hdr` in `capture` and change the mask filename as needed.
 
 **Arguments**
 
@@ -52,6 +66,7 @@ In the interactive window:
 
 - **Left mouse drag**: draw a **rectangular** ROI
 - **Right mouse drag**: draw a **circular/elliptical** ROI
+- **Mouse wheel**: zoom in/out around the cursor
 - **z**: clear all ROIs (reset mask to all‑False)
 - **s**: save current mask to `--output_mask` and exit
 - **q** or **Esc**: quit **without** saving

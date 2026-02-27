@@ -73,7 +73,9 @@ def main():
     roi_mask = np.zeros((h, w), dtype=bool)
 
     fig, ax = plt.subplots(figsize=(8, 6))
-    ax.set_title("ROI selection: left‑drag=rect, right‑drag=ellipse, 's'=save, 'z'=clear, 'q'=quit")
+    ax.set_title(
+        "ROI selection: left‑drag=rect, right‑drag=ellipse, wheel=zoom, 's'=save, 'z'=clear, 'q'=quit"
+    )
     img_artist = ax.imshow(rgb)
     overlay_artist = ax.imshow(
         np.zeros((h, w)), cmap="Reds", alpha=0.0
@@ -141,6 +143,42 @@ def main():
 
     saved = {"done": False}
 
+    def on_scroll(event):
+        # Zoom in/out around the mouse position using the scroll wheel.
+        if event.inaxes != ax:
+            return
+        # Typical Matplotlib scroll: 'up' -> zoom in, 'down' -> zoom out
+        scale_factor = 1.2 if event.button == "up" else 1 / 1.2
+
+        cur_xmin, cur_xmax = ax.get_xlim()
+        cur_ymin, cur_ymax = ax.get_ylim()
+
+        xdata = event.xdata
+        ydata = event.ydata
+        if xdata is None or ydata is None:
+            return
+
+        new_width = (cur_xmax - cur_xmin) / scale_factor
+        new_height = (cur_ymax - cur_ymin) / scale_factor
+
+        relx = (xdata - cur_xmin) / (cur_xmax - cur_xmin)
+        rely = (ydata - cur_ymin) / (cur_ymax - cur_ymin)
+
+        new_xmin = xdata - relx * new_width
+        new_xmax = xdata + (1 - relx) * new_width
+        new_ymin = ydata - rely * new_height
+        new_ymax = ydata + (1 - rely) * new_height
+
+        # Clamp to image bounds
+        new_xmin = max(new_xmin, -0.5)
+        new_ymin = max(new_ymin, -0.5)
+        new_xmax = min(new_xmax, w - 0.5)
+        new_ymax = min(new_ymax, h - 0.5)
+
+        ax.set_xlim(new_xmin, new_xmax)
+        ax.set_ylim(new_ymax, new_ymin)  # keep origin at top-left
+        fig.canvas.draw_idle()
+
     def on_key(event):
         if event.key == "z":
             roi_mask[:] = False
@@ -156,6 +194,7 @@ def main():
             plt.close(fig)
 
     fig.canvas.mpl_connect("key_press_event", on_key)
+    fig.canvas.mpl_connect("scroll_event", on_scroll)
 
     update_overlay()
     plt.show()

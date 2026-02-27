@@ -156,8 +156,12 @@ def main():
         description="Very simple fungus segmentation for testing.")
     parser.add_argument("--hsi_path", required=True,
                         help="Path to .npy hyperspectral cube.")
-    parser.add_argument("--csv_path", required=True,
-                        help="Path to reference CSV (wavelength, fungus_reflection).")
+    parser.add_argument(
+        "--csv_path",
+        required=False,
+        default=None,
+        help="(Optional) Path to reference CSV (wavelength, fungus_reflection). Not required for this integration pipeline.",
+    )
     parser.add_argument("--output_dir", default="./output",
                         help="Directory for output files.")
     parser.add_argument("--thresh", type=float, default=0.12,
@@ -174,9 +178,12 @@ def main():
 
     os.makedirs(args.output_dir, exist_ok=True)
 
-    # ------------------- Load reference ---------------------------------
-    wavelengths, ref_spec = load_reference(args.csv_path)
-    print(f"Reference spectra loaded: {len(wavelengths)} bands")
+    # ------------------- Load reference (optional) -----------------------
+    if args.csv_path is not None:
+        wavelengths, ref_spec = load_reference(args.csv_path)
+        print(f"Reference spectra loaded: {len(wavelengths)} bands")
+    else:
+        print("Reference spectra: skipped (no --csv_path provided)")
 
     # ------------------- Load cube ---------------------------------------
     cube, band_centers = load_hsi(args.hsi_path)
